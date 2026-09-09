@@ -10,8 +10,14 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 # Configuration
 # -----------------------------
 
-MODEL_PATH = "models/toxicity_model.keras"
-TOKENIZER_PATH = "models/tokenizer.pkl"
+from huggingface_hub import hf_hub_download
+
+MODEL_PATH = hf_hub_download(
+    repo_id="gopal71992/toxicity-model",
+    filename="toxicity_model_v2.keras"
+)
+
+TOKENIZER_PATH = "models/tokenizer_v2.pkl"
 
 MAX_LEN = 200
 THRESHOLD = 0.70
