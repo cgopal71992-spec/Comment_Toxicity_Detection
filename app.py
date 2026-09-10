@@ -2,23 +2,20 @@ import streamlit as st
 import tensorflow as tf
 import pickle
 import re
+import pandas as pd
 
+from huggingface_hub import hf_hub_download
 from tensorflow.keras.preprocessing.sequence import pad_sequences
-
 
 # -----------------------------
 # Configuration
 # -----------------------------
-
-from huggingface_hub import hf_hub_download
-
 MODEL_PATH = hf_hub_download(
     repo_id="gopal71992/toxicity-model",
     filename="toxicity_model_v2.keras"
 )
 
 TOKENIZER_PATH = "models/tokenizer_v2.pkl"
-
 MAX_LEN = 200
 THRESHOLD = 0.70
 
@@ -26,7 +23,6 @@ THRESHOLD = 0.70
 # -----------------------------
 # Load Model and Tokenizer
 # -----------------------------
-
 @st.cache_resource
 def load_model_and_tokenizer():
     model = tf.keras.models.load_model(MODEL_PATH)
@@ -43,34 +39,20 @@ model, tokenizer = load_model_and_tokenizer()
 # -----------------------------
 # Text Cleaning
 # -----------------------------
-
 def clean_text(text):
-    """Clean input comment text."""
-
     text = str(text).lower()
-
-    # Remove URLs
     text = re.sub(r"http\S+|www\S+|https\S+", "", text)
-
-    # Remove HTML tags
     text = re.sub(r"<.*?>", "", text)
-
-    # Keep only letters and spaces
     text = re.sub(r"[^a-zA-Z\s]", " ", text)
-
-    # Remove extra spaces
     text = re.sub(r"\s+", " ", text).strip()
 
     return text
 
 
 # -----------------------------
-# Prediction Function
+# Single Comment Prediction
 # -----------------------------
-
 def predict_toxicity(comment):
-    """Predict whether a comment is toxic."""
-
     cleaned_comment = clean_text(comment)
 
     sequence = tokenizer.texts_to_sequences([cleaned_comment])
@@ -87,10 +69,7 @@ def predict_toxicity(comment):
         verbose=0
     )[0][0]
 
-    if probability >= THRESHOLD:
-        result = "Toxic"
-    else:
-        result = "Non-Toxic"
+    result = "Toxic" if probability >= THRESHOLD else "Non-Toxic"
 
     return result, float(probability)
 
@@ -98,7 +77,6 @@ def predict_toxicity(comment):
 # -----------------------------
 # Streamlit Page
 # -----------------------------
-
 st.set_page_config(
     page_title="Comment Toxicity Detection",
     page_icon="🛡️",
@@ -106,14 +84,18 @@ st.set_page_config(
 )
 
 st.title("🛡️ Comment Toxicity Detection")
+
 st.write(
-    "Enter a comment below to check whether it is toxic or non-toxic."
+    "Detect whether a comment is Toxic or Non-Toxic "
+    "using a Deep Learning Bi-LSTM model."
 )
 
 
-# -----------------------------
+# ==================================================
 # Single Comment Prediction
-# -----------------------------
+# ==================================================
+
+st.header("📝 Single Comment Prediction")
 
 comment = st.text_area(
     "Enter your comment:",
@@ -140,3 +122,81 @@ if st.button("🔍 Predict Toxicity"):
         )
 
         st.progress(probability)
+
+
+# ==================================================
+# Bulk CSV Prediction
+# ==================================================
+
+st.header("📁 Bulk CSV Prediction")
+
+uploaded_file = st.file_uploader(
+    "Upload a CSV file containing a 'comment_text' column",
+    type=["csv"]
+)
+
+if uploaded_file is not None:
+
+    df = pd.read_csv(uploaded_file)
+
+    if "comment_text" not in df.columns:
+
+        st.error(
+            "CSV must contain a 'comment_text' column."
+        )
+
+    else:
+
+        st.success(
+            f"File uploaded successfully: {len(df)} comments"
+        )
+
+        if st.button("🚀 Predict CSV"):
+
+            predictions = []
+            probabilities = []
+
+            for text in df["comment_text"]:
+
+                result, probability = predict_toxicity(text)
+
+                predictions.append(result)
+                probabilities.append(probability)
+
+            df["prediction"] = predictions
+            df["toxicity_probability"] = probabilities
+
+            st.subheader("📊 Prediction Results")
+
+            st.dataframe(df)
+
+            csv_data = df.to_csv(index=False).encode("utf-8")
+
+            st.download_button(
+                label="⬇️ Download Predictions CSV",
+                data=csv_data,
+                file_name="toxicity_predictions.csv",
+                mime="text/csv"
+            )
+
+
+# ==================================================
+# Model Information
+# ==================================================
+
+st.header("ℹ️ Model Information")
+
+col1, col2, col3 = st.columns(3)
+
+with col1:
+    st.metric("Model", "Bi-LSTM")
+
+with col2:
+    st.metric("F1 Score", "78.56%")
+
+with col3:
+    st.metric("Threshold", "0.70")
+
+st.caption(
+    "Model trained using the Jigsaw Toxic Comment dataset."
+)
